@@ -25,6 +25,7 @@ var (
 	squash           bool
 	parallel         int
 	shrinkwrap       bool
+	writeBuildConfig bool
 	buildArgs        []string
 	buildArgMap      map[string]string
 	buildOptions     []string
@@ -49,6 +50,7 @@ func init() {
 	buildCmd.Flags().BoolVar(&squash, "squash", false, `Use Docker's squash flag for smaller images [experimental] `)
 	buildCmd.Flags().IntVar(&parallel, "parallel", 1, "Build in parallel to depth specified.")
 	buildCmd.Flags().BoolVar(&shrinkwrap, "shrinkwrap", false, "Just write files to ./build/ folder for shrink-wrapping")
+	buildCmd.Flags().BoolVar(&writeBuildConfig, "write-build-config", false, "Write build-args to a config file as JSON")
 	buildCmd.Flags().StringArrayVarP(&buildArgs, "build-arg", "b", []string{}, "Add a build-arg for Docker (KEY=VALUE)")
 	buildCmd.Flags().StringArrayVarP(&buildOptions, "build-option", "o", []string{}, "Set a build option, e.g. dev")
 	buildCmd.Flags().Var(&tagFormat, "tag", "Override latest tag on function Docker image, accepts 'latest', 'sha', 'branch', or 'describe'")
@@ -184,6 +186,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			nocache,
 			squash,
 			shrinkwrap,
+			writeBuildConfig,
 			buildArgMap,
 			buildOptions,
 			tagFormat,
@@ -204,7 +207,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	errors := build(&services, parallel, shrinkwrap, quietBuild)
+	errors := build(&services, parallel, shrinkwrap, writeBuildConfig, quietBuild)
 	if len(errors) > 0 {
 		errorSummary := "Errors received during build:\n"
 		for _, err := range errors {
@@ -215,7 +218,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func build(services *stack.Services, queueDepth int, shrinkwrap, quietBuild bool) []error {
+func build(services *stack.Services, queueDepth int, shrinkwrap, writeBuildConfig bool, quietBuild bool) []error {
 	startOuter := time.Now()
 
 	errors := []error{}
@@ -244,6 +247,7 @@ func build(services *stack.Services, queueDepth int, shrinkwrap, quietBuild bool
 						nocache,
 						squash,
 						shrinkwrap,
+						writeBuildConfig,
 						combinedBuildArgMap,
 						combinedBuildOptions,
 						tagFormat,

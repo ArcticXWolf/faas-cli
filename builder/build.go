@@ -4,6 +4,7 @@
 package builder
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -22,8 +23,13 @@ import (
 // Can also be passed as a build arg hence needs to be accessed from commands
 const AdditionalPackageBuildArg = "ADDITIONAL_PACKAGE"
 
+type buildConfig struct {
+	Ref       string            `json:"ref"`
+	BuildArgs map[string]string `json:"buildArgs,omitempty"`
+}
+
 // BuildImage construct Docker image from function parameters
-func BuildImage(image string, handler string, functionName string, language string, nocache bool, squash bool, shrinkwrap bool, buildArgMap map[string]string, buildOptions []string, tagMode schema.BuildFormat, buildLabelMap map[string]string, quietBuild bool, copyExtraPaths []string) error {
+func BuildImage(image string, handler string, functionName string, language string, nocache bool, squash bool, shrinkwrap bool, writeBuildConfig bool, buildArgMap map[string]string, buildOptions []string, tagMode schema.BuildFormat, buildLabelMap map[string]string, quietBuild bool, copyExtraPaths []string) error {
 
 	if stack.IsValidTemplate(language) {
 		pathToTemplateYAML := fmt.Sprintf("./template/%s/template.yml", language)
@@ -53,16 +59,28 @@ func BuildImage(image string, handler string, functionName string, language stri
 			return buildErr
 		}
 
-		if shrinkwrap {
-			fmt.Printf("%s shrink-wrapped to %s\n", functionName, tempPath)
-			return nil
-		}
-
 		buildOptPackages, buildPackageErr := getBuildOptionPackages(buildOptions, language, langTemplate.BuildOptions)
 
 		if buildPackageErr != nil {
 			return buildPackageErr
 
+		}
+
+		if writeBuildConfig {
+			config := createBuildConfig(imageName, buildArgMap, buildOptPackages)
+
+			configBytes, _ := json.Marshal(config)
+			configErr := ioutil.WriteFile(path.Join(tempPath, "com.openfaas.docker.config"), configBytes, 0600)
+			if configErr != nil {
+				return configErr
+			}
+
+			fmt.Printf("Wrote build config to %s\n", tempPath)
+		}
+
+		if shrinkwrap {
+			fmt.Printf("%s shrink-wrapped to %s\n", functionName, tempPath)
+			return nil
 		}
 
 		dockerBuildVal := dockerBuild{
@@ -312,6 +330,31 @@ func dockerBuildFolder(functionName string, handler string, language string) str
 	}
 
 	return tempPath
+}
+
+func createBuildConfig(imageName string, buildArgMap map[string]string, buildOptionPackages []string) buildConfig {
+	combinedBuildArgs := make(map[string]string)
+
+	for k, v := range buildArgMap {
+
+		if k != AdditionalPackageBuildArg {
+			combinedBuildArgs[k] = v
+		} else {
+			buildOptionPackages = append(buildOptionPackages, strings.Split(v, " ")...)
+		}
+	}
+
+	if len(buildOptionPackages) > 0 {
+		buildOptionPackages = deDuplicate(buildOptionPackages)
+		combinedBuildArgs[AdditionalPackageBuildArg] = strings.Join(buildOptionPackages, " ")
+	}
+
+	config := buildConfig{
+		Ref:       imageName,
+		BuildArgs: combinedBuildArgs,
+	}
+
+	return config
 }
 
 func buildFlagSlice(nocache bool, squash bool, httpProxy string, httpsProxy string, buildArgMap map[string]string, buildOptionPackages []string, buildLabelMap map[string]string) []string {

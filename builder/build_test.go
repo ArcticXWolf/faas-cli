@@ -3,6 +3,7 @@ package builder
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -532,6 +533,93 @@ func Test_pathInScope(t *testing.T) {
 				if abs != tc.expectedPath {
 					t.Fatalf("expected path %s, got %s", tc.expectedPath, abs)
 				}
+			}
+		})
+	}
+}
+
+func Test_createBuildConfig(t *testing.T) {
+	var testVals = []struct {
+		title               string
+		imageName           string
+		buildArgMap         map[string]string
+		buildOptionPackages []string
+		expectedBuildConfig buildConfig
+	}{
+		{
+			title:               "No BuildArgs",
+			imageName:           "testImage",
+			buildArgMap:         map[string]string{},
+			buildOptionPackages: []string{},
+			expectedBuildConfig: buildConfig{
+				Ref:       "testImage",
+				BuildArgs: map[string]string{},
+			},
+		},
+		{
+			title:     "Two BuildArgs and no BuildOptionPackages",
+			imageName: "testImage",
+			buildArgMap: map[string]string{
+				"TEST_ARGUMENT1": "1",
+				"TEST_ARGUMENT2": "2",
+			},
+			buildOptionPackages: []string{},
+			expectedBuildConfig: buildConfig{
+				Ref: "testImage",
+				BuildArgs: map[string]string{
+					"TEST_ARGUMENT1": "1",
+					"TEST_ARGUMENT2": "2",
+				},
+			},
+		},
+		{
+			title:     "Two BuildArgs and one BuildOptionPackage",
+			imageName: "testImage",
+			buildArgMap: map[string]string{
+				"TEST_ARGUMENT1": "1",
+				"TEST_ARGUMENT2": "2",
+			},
+			buildOptionPackages: []string{
+				"jq",
+			},
+			expectedBuildConfig: buildConfig{
+				Ref: "testImage",
+				BuildArgs: map[string]string{
+					"TEST_ARGUMENT1":          "1",
+					"TEST_ARGUMENT2":          "2",
+					AdditionalPackageBuildArg: "jq",
+				},
+			},
+		},
+		{
+			title:     "One BuildArg which specifies ADDITIONAL_PACKAGE and one BuildOptionPackage",
+			imageName: "testImage",
+			buildArgMap: map[string]string{
+				AdditionalPackageBuildArg: "qw",
+			},
+			buildOptionPackages: []string{
+				"jq",
+			},
+			expectedBuildConfig: buildConfig{
+				Ref: "testImage",
+				BuildArgs: map[string]string{
+					AdditionalPackageBuildArg: "jq qw",
+				},
+			},
+		},
+	}
+	for _, test := range testVals {
+
+		t.Run(test.title, func(t *testing.T) {
+
+			gotConfig := createBuildConfig(test.imageName, test.buildArgMap, test.buildOptionPackages)
+
+			if gotConfig.Ref != test.expectedBuildConfig.Ref {
+				t.Errorf("Image names differ - wanted: %s, found %s", test.expectedBuildConfig.Ref, gotConfig.Ref)
+			}
+
+			if !reflect.DeepEqual(gotConfig.BuildArgs, test.expectedBuildConfig.BuildArgs) {
+				t.Errorf("Build args differ - wanted: %s, found %s", test.expectedBuildConfig.BuildArgs, gotConfig.BuildArgs)
 			}
 		})
 	}
